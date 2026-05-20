@@ -1,215 +1,261 @@
-import axios, { AxiosError } from "axios";
-import type { AxiosInstance, AxiosRequestConfig } from "axios";
+import ky, { type KyInstance, type Options } from "ky";
 import {
   getAccessToken,
   getRefreshToken,
   setTokensOutside,
   logoutOutside,
 } from "@/stores/auth";
+import type { RefreshTokenResponse } from "@/types/auth";
 
-// Environment variables
+type ApiEnvelope<T> = {
+  statusCode?: number;
+  message?: string;
+  data: T;
+};
+
+type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
+
 const BACKEND_BASE_URL =
   import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
+const AUTH_BASE_URL = import.meta.env.VITE_AUTH_API_URL || BACKEND_BASE_URL;
 
-// Create axios instance
-const axiosInstance: AxiosInstance = axios.create({
-  baseURL: BACKEND_BASE_URL,
+const commonConfig: Options = {
   timeout: 30000,
+  retry: {
+    limit: 2,
+    methods: ["get", "put", "head", "delete", "options", "trace"],
+    statusCodes: [408, 413, 429, 500, 502, 503, 504],
+  },
   headers: {
     Accept: "application/json",
-    "Content-Type": "application/json",
   },
-});
+};
 
-// Request interceptor - Add token before sending request
-axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = getAccessToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
+const createApi = (prefixUrl: string): KyInstance =>
+  ky.create({
+    ...commonConfig,
+    baseUrl: prefixUrl,
+  } as any);
 
-// Response interceptor - Handle responses and token refresh
-axiosInstance.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  async (error: AxiosError) => {
-    const originalRequest = error.config as AxiosRequestConfig & {
-      _retry?: boolean;
-    };
+export const parentApi = ky.create(commonConfig as any);
+export const authApi = createApi(AUTH_BASE_URL);
+export const backendApi = createApi(BACKEND_BASE_URL);
 
-    // Handle 401 - Token expired or invalid
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      console.log("[Interceptor] 401 detected, attempting token refresh...");
-      originalRequest._retry = true;
+let refreshTokenPromise: Promise<string | null> | null = null;
 
-      try {
-        const refreshToken = getRefreshToken();
-        console.log("[Interceptor] Refresh token exists:", !!refreshToken);
+const buildHeaders = (headers?: Options["headers"], token?: string) => {
+  const requestHeaders = new Headers(headers as HeadersInit | undefined);
 
-        if (!refreshToken) {
-          console.log("[Interceptor] No refresh token, logging out");
-          logoutOutside();
-          if (typeof window !== "undefined") {
-            window.location.href = "/auth/login";
-          }
-          return Promise.reject(error);
-        }
+  if (token) {
+    requestHeaders.set("Authorization", `Bearer ${token}`);
+  }
 
-        // Try to refresh token
-        console.log("[Interceptor] Calling refresh endpoint...");
-        const refreshResponse = await axios.post(
-          `${BACKEND_BASE_URL}/api/v1/auth/refresh`,
-          { refreshToken },
-        );
+  return requestHeaders;
+};
 
-        console.log("[Interceptor] Refresh response:", refreshResponse.data);
-        const { accessToken, refreshToken: newRefreshToken } =
-          refreshResponse.data.data;
+const parseEnvelopeData = async <T>(response: Response): Promise<T> => {
+  const text = await response.text();
+
+  if (!text) {
+    return undefined as T;
+  }
+
+  const parsed = JSON.parse(text) as ApiEnvelope<T>;
+  return parsed.data;
+};
+
+const isUnauthorizedError = (error: unknown) => {
+  return (
+    (error as { response?: Response } | undefined)?.response?.status === 401
+  );
+};
+
+const refreshAccessToken = async (): Promise<string | null> => {
+  const refreshToken = getRefreshToken();
+
+  if (!refreshToken) {
+    return null;
+  }
+
+  if (!refreshTokenPromise) {
+    refreshTokenPromise = authApi
+      .post("api/v1/auth/refresh", {
+        json: { refreshToken },
+      } as any)
+      .json<ApiEnvelope<RefreshTokenResponse>>()
+      .then((response) => {
+        const accessToken = response?.data?.accessToken;
+        const nextRefreshToken = response?.data?.refreshToken || refreshToken;
 
         if (!accessToken) {
-          console.error("[Interceptor] No accessToken in refresh response");
-          logoutOutside();
-          if (typeof window !== "undefined") {
-            window.location.href = "/auth/login";
-          }
-          return Promise.reject(
-            new Error("No accessToken in refresh response"),
-          );
+          return null;
         }
 
-        // Update tokens in store
-        console.log("[Interceptor] Updating tokens in store");
-        setTokensOutside(accessToken, newRefreshToken || refreshToken);
+        setTokensOutside(accessToken, nextRefreshToken);
+        return accessToken;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshTokenPromise = null;
+      });
+  }
 
-        // Retry original request with new token
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-        }
-        console.log("[Interceptor] Retrying original request with new token");
-        return axiosInstance(originalRequest);
-      } catch (refreshError) {
-        // Refresh failed - logout
-        console.error("[Interceptor] Token refresh failed:", refreshError);
-        logoutOutside();
-        if (typeof window !== "undefined") {
-          window.location.href = "/auth/login";
-        }
-        return Promise.reject(refreshError);
+  return refreshTokenPromise;
+};
+
+const requestBackend = async <T>(
+  method: HttpMethod,
+  url: string,
+  options?: Options,
+): Promise<T> => {
+  const token = getAccessToken();
+  const requestOptions = {
+    ...options,
+    headers: buildHeaders(options?.headers, token || undefined),
+  } as any;
+
+  try {
+    const response = await backendApi[method](url, requestOptions);
+    return parseEnvelopeData<T>(response);
+  } catch (error) {
+    if (!isUnauthorizedError(error)) {
+      throw error;
+    }
+
+    const newAccessToken = await refreshAccessToken();
+
+    if (!newAccessToken) {
+      logoutOutside();
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/login";
       }
+      throw error;
     }
 
-    // Handle other errors
-    if (error.response?.data) {
-      const errorData = error.response.data as any;
-      error.message = errorData.message || errorData.error || error.message;
-    }
+    const retryOptions = {
+      ...options,
+      headers: buildHeaders(options?.headers, newAccessToken),
+    } as any;
 
-    return Promise.reject(error);
-  },
-);
+    const retryResponse = await backendApi[method](url, retryOptions);
+    return parseEnvelopeData<T>(retryResponse);
+  }
+};
 
-// API utility functions
+const requestAuth = async <T>(
+  method: HttpMethod,
+  url: string,
+  options?: Options,
+): Promise<T> => {
+  const response = await authApi[method](url, options as any);
+  return parseEnvelopeData<T>(response);
+};
+
 export const apiUtils = {
-  get: async <T = any>(
-    url: string,
-    config?: AxiosRequestConfig,
-  ): Promise<T> => {
-    const response = await axiosInstance.get<{ data: T }>(url, config);
-    return response.data.data;
+  get: async <T = any>(url: string, options?: Options): Promise<T> => {
+    return requestBackend<T>("get", url, options);
   },
 
   post: async <T = any>(
     url: string,
     data?: any,
-    config?: AxiosRequestConfig,
+    options?: Options,
   ): Promise<T> => {
-    const response = await axiosInstance.post<{ data: T }>(url, data, config);
-    return response.data.data;
+    return requestBackend<T>("post", url, {
+      ...options,
+      json: data,
+    } as any);
   },
 
   put: async <T = any>(
     url: string,
     data?: any,
-    config?: AxiosRequestConfig,
+    options?: Options,
   ): Promise<T> => {
-    const response = await axiosInstance.put<{ data: T }>(url, data, config);
-    return response.data.data;
+    return requestBackend<T>("put", url, {
+      ...options,
+      json: data,
+    } as any);
   },
 
   patch: async <T = any>(
     url: string,
     data?: any,
-    config?: AxiosRequestConfig,
+    options?: Options,
   ): Promise<T> => {
-    const response = await axiosInstance.patch<{ data: T }>(url, data, config);
-    return response.data.data;
+    return requestBackend<T>("patch", url, {
+      ...options,
+      json: data,
+    } as any);
   },
 
-  delete: async <T = any>(
-    url: string,
-    config?: AxiosRequestConfig,
-  ): Promise<T> => {
-    const response = await axiosInstance.delete<{ data: T }>(url, config);
-    return response.data.data;
+  delete: async <T = any>(url: string, options?: Options): Promise<T> => {
+    return requestBackend<T>("delete", url, options);
   },
 
-  // Alias for delete
-  del: async <T = any>(
-    url: string,
-    config?: AxiosRequestConfig,
-  ): Promise<T> => {
-    return apiUtils.delete<T>(url, config);
+  del: async <T = any>(url: string, options?: Options): Promise<T> => {
+    return apiUtils.delete<T>(url, options);
   },
 };
 
-// Auth-specific API utilities (same as general)
 export const authUtils = {
-  get: async <T = any>(
-    url: string,
-    config?: AxiosRequestConfig,
-  ): Promise<T> => {
-    return apiUtils.get<T>(url, config);
+  get: async <T = any>(url: string, options?: Options): Promise<T> => {
+    return requestAuth<T>("get", url, options);
   },
 
   post: async <T = any>(
     url: string,
     data?: any,
-    config?: AxiosRequestConfig,
+    options?: Options,
   ): Promise<T> => {
-    return apiUtils.post<T>(url, data, config);
+    return requestAuth<T>("post", url, {
+      ...options,
+      json: data,
+    } as any);
   },
 
   put: async <T = any>(
     url: string,
     data?: any,
-    config?: AxiosRequestConfig,
+    options?: Options,
   ): Promise<T> => {
-    return apiUtils.put<T>(url, data, config);
+    return requestAuth<T>("put", url, {
+      ...options,
+      json: data,
+    } as any);
   },
 
   patch: async <T = any>(
     url: string,
     data?: any,
-    config?: AxiosRequestConfig,
+    options?: Options,
   ): Promise<T> => {
-    return apiUtils.patch<T>(url, data, config);
+    return requestAuth<T>("patch", url, {
+      ...options,
+      json: data,
+    } as any);
   },
 
-  delete: async <T = any>(
-    url: string,
-    config?: AxiosRequestConfig,
-  ): Promise<T> => {
-    return apiUtils.delete<T>(url, config);
+  delete: async <T = any>(url: string, options?: Options): Promise<T> => {
+    return requestAuth<T>("delete", url, options);
   },
 };
 
-// Export axios instance for custom usage if needed
-export { axiosInstance };
+export const createAuthenticatedApi = (
+  baseUrl: string,
+  additionalConfig: Options = {},
+): KyInstance => {
+  return ky.create({
+    ...commonConfig,
+    ...additionalConfig,
+    baseUrl,
+  } as any);
+};
+
+export const createServiceApi = (
+  serviceName: string,
+  baseUrl?: string,
+): KyInstance => {
+  const serviceBaseUrl = baseUrl || `${BACKEND_BASE_URL}/${serviceName}`;
+  return createAuthenticatedApi(serviceBaseUrl);
+};

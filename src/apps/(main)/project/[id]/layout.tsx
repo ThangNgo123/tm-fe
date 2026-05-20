@@ -29,10 +29,7 @@ import EditProjectModal from "@/components/project/edit-project-modal";
 import type { Project } from "@/types/project";
 
 export default function ProjectLayout() {
-  console.log("[ProjectLayout] Component rendering");
   const { data: projects, isLoading } = useProjects();
-  console.log("[ProjectLayout] isLoading:", isLoading);
-  console.log("[ProjectLayout] projects:", projects);
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -41,12 +38,7 @@ export default function ProjectLayout() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [editModalOpened, setEditModalOpened] = useState(false);
 
-  if (isLoading) {
-    console.log("[ProjectLayout] Currently loading projects...");
-  }
-
   const handleEditProject = (project: Project) => {
-    console.log("Edit project:", project.id);
     setSelectedProject(project);
     setEditModalOpened(true);
   };
@@ -89,7 +81,6 @@ export default function ProjectLayout() {
             {!isLoading &&
               projects &&
               projects.map((p) => {
-                console.log("[ProjectLayout] Rendering project:", p);
                 const to = `/project/${p.id}`;
                 const isActive = location.pathname === to;
                 return (

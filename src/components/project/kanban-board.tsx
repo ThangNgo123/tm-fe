@@ -20,6 +20,7 @@ import {
   TextInput,
   ActionIcon,
 } from "@mantine/core";
+import { openConfirmModal } from "@mantine/modals";
 import {
   IconPlus,
   IconCheck,
@@ -27,6 +28,7 @@ import {
   IconCalendarEvent,
   IconFlag,
   IconInfoCircle,
+  IconTrash,
 } from "@tabler/icons-react";
 import TaskDetailDrawer from "./task-detail-drawer";
 
@@ -87,6 +89,12 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   const theme = useMantineTheme();
 
   const queryClient = useQueryClient();
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => taskService.deleteTask(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", projectId] });
+    },
+  });
   const updateMutation = useMutation({
     mutationFn: ({
       id,
@@ -173,9 +181,10 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
                     ? theme.colors[STATUS_CONFIG[status].color][0]
                     : theme.colors.gray[0],
                 border: `2px solid ${theme.colors[STATUS_CONFIG[status].color][3]}`,
-                minHeight: "70vh",
+                maxHeight: "calc(100vh - 180px)",
                 display: "flex",
                 flexDirection: "column",
+                overflow: "hidden",
               }}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -218,7 +227,12 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
               {/* Tasks Container */}
               <Stack
                 gap="sm"
-                style={{ flex: 1, minHeight: "650px", overflow: "auto" }}
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  paddingRight: 4,
+                }}
               >
                 {tasksByStatus[status] && tasksByStatus[status].length > 0 ? (
                   tasksByStatus[status].map((task) => (
@@ -251,9 +265,33 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     >
-                      <Text fw={600} size="sm" mb="xs" truncate>
-                        {task.title}
-                      </Text>
+                      <Group justify="space-between" align="flex-start" mb="xs" wrap="nowrap">
+                        <Text fw={600} size="sm" truncate style={{ flex: 1 }}>
+                          {task.title}
+                        </Text>
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          color="red"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openConfirmModal({
+                              title: "Confirm delete task",
+                              centered: true,
+                              children: `Delete task \"${task.title}\"? This action cannot be undone.`,
+                              labels: { confirm: "Delete", cancel: "Cancel" },
+                              confirmProps: { color: "red" },
+                              onConfirm: async () => {
+                                await deleteMutation.mutateAsync(task.id);
+                              },
+                            });
+                          }}
+                          loading={deleteMutation.isPending}
+                          aria-label="Delete task"
+                        >
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Group>
                       <Group gap="xs" wrap="wrap" align="center">
                         <Badge
                           variant="light"

@@ -6,7 +6,7 @@ export interface LoginRequest {
 }
 
 export interface RefreshTokenRequest {
-  token: string;
+  refreshToken: string;
 }
 
 export interface GetProfileRequest {

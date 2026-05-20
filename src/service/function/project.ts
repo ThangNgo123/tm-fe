@@ -11,7 +11,6 @@ export const projectService = {
   // Get all projects for current user
   getAllProjects: async (): Promise<Project[]> => {
     const response = await apiUtils.get<Project[]>(`${PREFIX}/projects`);
-    console.log("getAllProjects response:", response);
     return response ?? [];
   },
 
