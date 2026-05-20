@@ -61,6 +61,24 @@ const normalizeDateValue = (value: Date | string | null) => {
   return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
 };
 
+const isTaskOverdue = (
+  dueDateEnd: Date | string | null,
+  now: Date,
+  taskStatus?: TaskStatus,
+) => {
+  const parsedEndDate = normalizeDateValue(dueDateEnd);
+
+  if (!parsedEndDate) {
+    return false;
+  }
+
+  if (taskStatus === TaskStatus.DONE || taskStatus === TaskStatus.CANCELLED) {
+    return false;
+  }
+
+  return now.getTime() > parsedEndDate.getTime();
+};
+
 const buildUpdatePayload = ({
   title,
   description,
@@ -135,10 +153,19 @@ export default function TaskDetailDrawer({
     null,
   ]);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>("saved");
+  const [now, setNow] = useState(() => new Date());
 
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveRevisionRef = useRef(0);
   const lastSavedSignatureRef = useRef("");
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (opened && task) {
@@ -291,6 +318,7 @@ export default function TaskDetailDrawer({
 
   const startDate = normalizeDateValue(dueDateRange[0]);
   const endDate = normalizeDateValue(dueDateRange[1]);
+  const overdue = isTaskOverdue(endDate, now, status || task.status);
 
   const dueDateLabel =
     startDate || endDate
@@ -312,6 +340,11 @@ export default function TaskDetailDrawer({
             : "End unset"
         }`
       : "No due date";
+
+  const dueDateBadgeColor = overdue ? "red" : "teal";
+  const dueDateBadgeLabel = overdue
+    ? `Overdue · ${dueDateLabel}`
+    : dueDateLabel;
 
   const autosaveStatusConfig = getAutosaveStatusConfig(autosaveState);
   const titleError = !title.trim() ? "Task name is required" : null;
@@ -387,11 +420,11 @@ export default function TaskDetailDrawer({
               {priorityLabel}
             </Badge>
             <Badge
-              color="teal"
+              color={dueDateBadgeColor}
               variant="light"
               leftSection={<IconCalendarEvent size={12} />}
             >
-              {dueDateLabel}
+              {dueDateBadgeLabel}
             </Badge>
           </Group>
         </Paper>

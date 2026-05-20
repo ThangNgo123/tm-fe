@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { taskService } from "@/service/function/task";
 import { useTasksByProjectId, useCreateTask } from "@/service/hook/task.hook";
@@ -98,6 +98,23 @@ const formatDueDateRange = (task: Task) => {
   return "No due date";
 };
 
+const isTaskOverdue = (task: Task, now: Date) => {
+  if (task.status === TaskStatus.DONE || task.status === TaskStatus.CANCELLED) {
+    return false;
+  }
+
+  if (!task.due_date_end) {
+    return false;
+  }
+
+  const parsedEndDate = new Date(task.due_date_end);
+  if (Number.isNaN(parsedEndDate.getTime())) {
+    return false;
+  }
+
+  return now.getTime() > parsedEndDate.getTime();
+};
+
 interface KanbanBoardProps {
   projectId: string;
 }
@@ -134,6 +151,15 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   const [detailDrawerOpened, setDetailDrawerOpened] = useState(false);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const handleAddClick = (status: TaskStatus) => {
     setAddingStatus(status);
@@ -260,8 +286,10 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
                       p="sm"
                       radius="md"
                       style={{
-                        backgroundColor: "white",
-                        border: `1px solid ${theme.colors.gray[2]}`,
+                        backgroundColor: isTaskOverdue(task, now)
+                          ? theme.colors.red[0]
+                          : "white",
+                        border: `1px solid ${isTaskOverdue(task, now) ? theme.colors.red[4] : theme.colors.gray[2]}`,
                         cursor: "grab",
                         transition: "all 0.2s ease",
                         opacity: draggingTaskId === task.id ? 0.5 : 1,
@@ -339,9 +367,17 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
                           <IconCalendarEvent
                             size={14}
                             stroke={1.8}
-                            color={theme.colors.gray[6]}
+                            color={
+                              isTaskOverdue(task, now)
+                                ? theme.colors.red[6]
+                                : theme.colors.gray[6]
+                            }
                           />
-                          <Text size="xs" c="dimmed">
+                          <Text
+                            size="xs"
+                            c={isTaskOverdue(task, now) ? "red" : "dimmed"}
+                            fw={isTaskOverdue(task, now) ? 600 : 400}
+                          >
                             {formatDueDateRange(task)}
                           </Text>
                         </Group>
