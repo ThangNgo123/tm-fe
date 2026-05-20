@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   Drawer,
   Stack,
@@ -14,6 +15,8 @@ import {
   Divider,
   Paper,
   ThemeIcon,
+  Tooltip,
+  ActionIcon,
 } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 
@@ -29,6 +32,7 @@ import {
   IconFlag,
   IconInfoCircle,
   IconTrash,
+  IconArrowUpRight,
 } from "@tabler/icons-react";
 import type { DatesRangeValue } from "@mantine/dates";
 
@@ -143,6 +147,7 @@ export default function TaskDetailDrawer({
   const { mutateAsync: updateTask } = useUpdateTask(projectId, task?.id || "");
   const { mutateAsync: deleteTask, isPending: isDeleting } =
     useDeleteTask(projectId);
+  const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -371,6 +376,17 @@ export default function TaskDetailDrawer({
           >
             {autosaveStatusConfig.label}
           </Badge>
+          <Tooltip label="Open detail page" position="left">
+            <ActionIcon
+              size="lg"
+              variant="light"
+              color="blue"
+              onClick={() => navigate(`/project/${projectId}/task/${task.id}`)}
+              aria-label="Open detail page"
+            >
+              <IconArrowUpRight size={16} />
+            </ActionIcon>
+          </Tooltip>
         </Group>
       }
       position="right"

@@ -9,6 +9,7 @@ import MainsPage from "@/apps/(main)/page";
 import { nonAuthLoader, authLoader } from "@/utils/loader";
 import ProjectLayout from "@/apps/(main)/project/[id]/layout";
 import ProjectPage from "@/apps/(main)/project/[id]/page";
+import TaskDetailPage from "@/apps/(main)/project/[id]/task/[taskId]/page";
 import ProjectIndex from "@/apps/(main)/project/page";
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
@@ -68,6 +69,10 @@ export const router = createBrowserRouter([
               {
                 index: true,
                 element: <ProjectPage />,
+              },
+              {
+                path: "task/:taskId",
+                element: <TaskDetailPage />,
               },
             ],
           },
