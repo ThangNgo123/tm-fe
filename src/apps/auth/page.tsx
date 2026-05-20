@@ -23,7 +23,6 @@ export default function LoginPage() {
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
     try {
-      console.log("Google login successful:", credentialResponse);
       setIsLoadingLocal(true);
       setError(null);
       setLoading(true);

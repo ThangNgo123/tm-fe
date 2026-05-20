@@ -23,7 +23,6 @@ export const projectService = {
   // Create a new project
   createProject: async (data: CreateProjectRequest): Promise<Project> => {
     const response = await apiUtils.post<Project>(`${PREFIX}/projects`, data);
-    console.log("createProject response:", response);
     return response;
   },
 
