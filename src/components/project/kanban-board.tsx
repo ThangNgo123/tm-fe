@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { taskService } from "@/service/function/task";
 import { useTasksByProjectId, useCreateTask } from "@/service/hook/task.hook";
 import { TaskStatus } from "@/types/task";
 import type { Task } from "@/types/task";
@@ -84,10 +86,27 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   const { mutateAsync: createTask, isPending } = useCreateTask(projectId);
   const theme = useMantineTheme();
 
+  const queryClient = useQueryClient();
+  const updateMutation = useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: Partial<Record<string, any>>;
+    }) => taskService.updateTask(id, data as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["task"] });
+    },
+  });
+
   const [addingStatus, setAddingStatus] = useState<TaskStatus | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [detailDrawerOpened, setDetailDrawerOpened] = useState(false);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
 
   const handleAddClick = (status: TaskStatus) => {
     setAddingStatus(status);
@@ -149,11 +168,37 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
               p="md"
               radius="md"
               style={{
-                backgroundColor: theme.colors.gray[0],
+                backgroundColor:
+                  dragOverStatus === status
+                    ? theme.colors[STATUS_CONFIG[status].color][0]
+                    : theme.colors.gray[0],
                 border: `2px solid ${theme.colors[STATUS_CONFIG[status].color][3]}`,
                 minHeight: "70vh",
                 display: "flex",
                 flexDirection: "column",
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverStatus(status as TaskStatus);
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDragLeave={() => setDragOverStatus(null)}
+              onDrop={async (e) => {
+                e.preventDefault();
+                setDragOverStatus(null);
+                const id = e.dataTransfer.getData("text/plain");
+                if (!id) return;
+                const task = tasks?.find((t) => t.id === id);
+                if (!task) return;
+                if (task.status === status) return;
+
+                try {
+                  await updateMutation.mutateAsync({ id, data: { status } });
+                } catch (err) {
+                  console.error("Failed to move task:", err);
+                } finally {
+                  setDraggingTaskId(null);
+                }
               }}
             >
               {/* Column Header */}
@@ -184,9 +229,17 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
                       style={{
                         backgroundColor: "white",
                         border: `1px solid ${theme.colors.gray[2]}`,
-                        cursor: "pointer",
+                        cursor: "grab",
                         transition: "all 0.2s ease",
+                        opacity: draggingTaskId === task.id ? 0.5 : 1,
                       }}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", task.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDraggingTaskId(task.id);
+                      }}
+                      onDragEnd={() => setDraggingTaskId(null)}
                       onClick={() => {
                         setSelectedTask(task);
                         setDetailDrawerOpened(true);
