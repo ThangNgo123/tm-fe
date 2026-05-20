@@ -264,7 +264,26 @@ export default function TaskDetailDrawer({
     <Drawer
       opened={opened}
       onClose={onClose}
-      title={title.trim() || task.title}
+      title={
+        <Group justify="space-between" align="center" wrap="nowrap" gap="md">
+          <Box style={{ minWidth: 0 }}>
+            <Text fw={700} size="lg" truncate>
+              {title.trim() || task.title}
+            </Text>
+            <Text size="xs" c="dimmed">
+              Auto save enabled
+            </Text>
+          </Box>
+          <Badge
+            size="lg"
+            color={autosaveStatusConfig.color}
+            variant="light"
+            leftSection={autosaveStatusConfig.icon}
+          >
+            {autosaveStatusConfig.label}
+          </Badge>
+        </Group>
+      }
       position="right"
       size="50%"
     >
@@ -342,7 +361,7 @@ export default function TaskDetailDrawer({
 
         <Paper p="md" radius="md" withBorder>
           <Stack gap="sm">
-            <Group justify="space-between" align="center">
+            <Group gap="xs">
               <Group gap="xs">
                 <ThemeIcon variant="light" color="blue" radius="md" size="sm">
                   <IconInfoCircle size={14} />
@@ -351,13 +370,6 @@ export default function TaskDetailDrawer({
                   Description
                 </Text>
               </Group>
-              <Badge
-                color={autosaveStatusConfig.color}
-                variant="light"
-                leftSection={autosaveStatusConfig.icon}
-              >
-                {autosaveStatusConfig.label}
-              </Badge>
             </Group>
             <Textarea
               value={description}
@@ -459,12 +471,6 @@ export default function TaskDetailDrawer({
             </Group>
           </Stack>
         </Paper>
-
-        <Group style={{ justifyContent: "space-between" }}>
-          <Button variant="default" onClick={onClose}>
-            Close
-          </Button>
-        </Group>
 
         <Button
           color="red"
