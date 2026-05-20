@@ -1,7 +1,6 @@
 import { authUtils, apiUtils } from "@/utils/api";
 import type {
   LoginRequest,
-  LoginApiResponse,
   LoginResponseData,
   RefreshTokenRequest,
   RefreshTokenResponse,
@@ -15,25 +14,35 @@ const PREFIX = "api/v1";
 export const authService = {
   // Login user with token
   login: async (credentials: LoginRequest): Promise<LoginResponseData> => {
-    const response = await authUtils.post<LoginApiResponse>(
+    const response = await authUtils.post<LoginResponseData>(
       `${PREFIX}/auth/login`,
       credentials,
     );
-    // Extract data from the wrapper response
-    return response.data;
+    // authUtils.post already extracts response.data.data, so response IS the data
+    return response;
   },
 
   // Refresh access token
   refreshToken: async (
     data: RefreshTokenRequest,
   ): Promise<RefreshTokenResponse> => {
-    return authUtils.post<RefreshTokenResponse>(`${PREFIX}/auth/refresh`, data);
+    const response = await authUtils.post<RefreshTokenResponse>(
+      `${PREFIX}/auth/refresh`,
+      data,
+    );
+    // authUtils.post already extracts response.data.data, so response IS the data
+    return response;
   },
 
   // Get user profile by email
   getUserProfile: async (
     data: GetProfileRequest,
   ): Promise<GetProfileResponse> => {
-    return apiUtils.post<GetProfileResponse>(`${PREFIX}/users/profile`, data);
+    const response = await apiUtils.post<GetProfileResponse>(
+      `${PREFIX}/users/profile`,
+      data,
+    );
+    // apiUtils.post already extracts response.data.data, so response IS the data
+    return response;
   },
 };

@@ -1,107 +1,48 @@
-import {
-  Container,
-  Stack,
-  Title,
-  Text,
-  Button,
-  Breadcrumbs,
-  Badge,
-  Card,
-  Group,
-  Anchor,
-} from "@mantine/core";
-import { Link, useParams } from "react-router";
+import { useProjectById } from "@/service/hook/project.hook";
+import { useParams } from "react-router";
+import { Box, Loader, Center, Alert } from "@mantine/core";
+import { IconAlertCircle } from "@tabler/icons-react";
+import KanbanBoard from "@/components/project/kanban-board";
 
-/**
- * Project Detail Page - Display project details and tasks
- */
-export default function ProjectDetailPage() {
-  const { id } = useParams();
-  // TODO: Fetch project and tasks using useQuery hook with project id
+export default function ProjectPage() {
+  const { id } = useParams<{ id: string }>();
+  const { data: project, isLoading, error } = useProjectById(id || "");
+
+  if (isLoading) {
+    return (
+      <Center style={{ minHeight: "70vh" }}>
+        <Loader />
+      </Center>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert
+        icon={<IconAlertCircle size={16} />}
+        title="Error loading project"
+        color="red"
+      >
+        {error.message}
+      </Alert>
+    );
+  }
+
+  if (!project) {
+    return (
+      <Alert
+        icon={<IconAlertCircle size={16} />}
+        title="Project not found"
+        color="yellow"
+      >
+        The project you are looking for does not exist.
+      </Alert>
+    );
+  }
 
   return (
-    <Container size="lg" py="xl">
-      <Stack gap="lg">
-        {/* Breadcrumb */}
-        <Breadcrumbs>
-          <Link to="/">
-            <Anchor>Projects</Anchor>
-          </Link>
-          <Anchor component="span">Project Detail</Anchor>
-        </Breadcrumbs>
-
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <div>
-            <Title order={1}>Project #{id}</Title>
-            <Text c="dimmed" size="sm" mt={4}>
-              Project Name Here
-            </Text>
-          </div>
-          <Button>Create Task</Button>
-        </Group>
-
-        {/* Project Info */}
-        <Card withBorder padding="lg" radius="md">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <div>
-                <Text fw={500} mb={4}>
-                  Status
-                </Text>
-                <Badge>Active</Badge>
-              </div>
-              <div>
-                <Text fw={500} mb={4}>
-                  Tasks
-                </Text>
-                <Text size="lg" fw={700}>
-                  5
-                </Text>
-              </div>
-              <div>
-                <Text fw={500} mb={4}>
-                  Created
-                </Text>
-                <Text>2024-01-15</Text>
-              </div>
-            </Group>
-          </Stack>
-        </Card>
-
-        {/* Tasks List */}
-        <div>
-          <Title order={2} mb="md">
-            Tasks
-          </Title>
-          <Stack gap="md">
-            {/* Example Task Card - Replace with actual data */}
-            <Card withBorder padding="lg" radius="md">
-              <Group justify="space-between" mb="xs">
-                <div>
-                  <Link to={`/projects/${id}/tasks/1`}>
-                    <Title
-                      order={4}
-                      style={{ cursor: "pointer", color: "#667eea" }}
-                    >
-                      Sample Task
-                    </Title>
-                  </Link>
-                </div>
-                <Badge color="blue">In Progress</Badge>
-              </Group>
-              <Text c="dimmed" size="sm" mb="md">
-                This is a sample task. Click to view details.
-              </Text>
-              <Link to={`/projects/${id}/tasks/1`}>
-                <Button variant="light" size="sm">
-                  View Details
-                </Button>
-              </Link>
-            </Card>
-          </Stack>
-        </div>
-      </Stack>
-    </Container>
+    <Box>
+      <KanbanBoard projectId={id || ""} />
+    </Box>
   );
 }

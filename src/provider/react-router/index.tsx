@@ -2,14 +2,14 @@ import { Suspense } from "react";
 import { createBrowserRouter, Outlet } from "react-router";
 import { TanstackQueryProvider } from "../tanstack-query";
 import { BaseMantineProvider } from "../mantine";
-import HomePage from "@/apps/(main)/page";
-import MainLayout from "@/apps/(main)/layout";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import LoginPage from "@/apps/auth/page";
+import MainsLayout from "@/apps/(main)/layout";
+import MainsPage from "@/apps/(main)/page";
 import { nonAuthLoader, authLoader } from "@/utils/loader";
-import ProjectPage from "@/apps/(main)/project/page";
-import ProjectDetailPage from "@/apps/(main)/project/[id]/page";
-import TaskDetailPage from "@/apps/(main)/project/[id]/task/[taskId]/page";
+import ProjectLayout from "@/apps/(main)/project/[id]/layout";
+import ProjectPage from "@/apps/(main)/project/[id]/page";
+import ProjectIndex from "@/apps/(main)/project/page";
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   return (
@@ -51,27 +51,23 @@ export const router = createBrowserRouter([
       {
         loader: authLoader,
         path: "/",
-        element: <MainLayout />,
+        element: <MainsLayout />,
         children: [
           {
             index: true,
-            element: <HomePage />,
+            element: <MainsPage />,
           },
           {
-            path: "projects",
-            element: <Outlet />,
+            path: "project",
+            element: <ProjectIndex />,
+          },
+          {
+            path: "project/:id",
+            element: <ProjectLayout />,
             children: [
               {
                 index: true,
                 element: <ProjectPage />,
-              },
-              {
-                path: ":id",
-                element: <ProjectDetailPage />,
-              },
-              {
-                path: ":id/tasks/:taskId",
-                element: <TaskDetailPage />,
               },
             ],
           },

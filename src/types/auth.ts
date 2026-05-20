@@ -36,6 +36,19 @@ export interface GetProfileResponse {
   user: User;
 }
 
+// Wrapper responses (backend always wraps responses with data)
+export interface ApiRefreshTokenResponse {
+  statusCode: number;
+  message: string;
+  data: RefreshTokenResponse;
+}
+
+export interface ApiGetProfileResponse {
+  statusCode: number;
+  message: string;
+  data: GetProfileResponse;
+}
+
 // Generic API Response wrapper
 export interface ApiResponse<T = any> {
   statusCode?: number;

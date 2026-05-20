@@ -1,4 +1,5 @@
-import ky, { type KyInstance, type Options } from "ky";
+import axios, { AxiosError } from "axios";
+import type { AxiosInstance, AxiosRequestConfig } from "axios";
 import {
   getAccessToken,
   getRefreshToken,
@@ -6,274 +7,209 @@ import {
   logoutOutside,
 } from "@/stores/auth";
 
-// Environment variables or configuration
+// Environment variables
 const BACKEND_BASE_URL =
-  import.meta.env.VITE_BACKEND_API_URL || "https://be.bdgad.bio";
+  import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
 
-// Common configuration for all API instances
-const commonConfig: Options = {
-  timeout: 300000, // 30 seconds
-  retry: {
-    limit: 2,
-    methods: ["get", "put", "head", "delete", "options", "trace"],
-    statusCodes: [408, 413, 429, 500, 502, 503, 504],
-  },
+// Create axios instance
+const axiosInstance: AxiosInstance = axios.create({
+  baseURL: BACKEND_BASE_URL,
+  timeout: 30000,
   headers: {
     Accept: "application/json",
+    "Content-Type": "application/json",
   },
-  hooks: {
-    beforeError: [
-      async (error: any) => {
-        try {
-          const { response } = error;
-          if (response && typeof response.clone === "function") {
-            try {
-              // Clone the response to avoid consuming the original stream
-              const clonedResponse = response.clone();
-              const errorData = (await clonedResponse.json()) as unknown;
-
-              // Attach the parsed error data to the error object
-              (error as any).errorData = errorData;
-
-              error.name = "APIError";
-              error.message =
-                (errorData as any)?.message ||
-                (errorData as any)?.error ||
-                error.message ||
-                "An error occurred";
-            } catch {
-              // If response parsing fails, keep original error
-              error.message =
-                error.message || `HTTP ${response?.status || "Error"}`;
-            }
-          }
-        } catch {
-          // Ensure we always return a valid error
-          error.message = error.message || "An unknown error occurred";
-        }
-        // @ts-ignore - Ky hook signature compatibility
-        return error;
-      },
-    ] as any,
-  },
-};
-
-// Parent ky instance with common configuration
-export const parentApi = ky.create({
-  ...commonConfig,
-  prefix: BACKEND_BASE_URL,
 });
 
-// Auth API instance - for authentication related endpoints
-export const authApi = parentApi.extend({
-  hooks: {
-    beforeRequest: [
-      (request: any) => {
-        // For auth API, we might not always need the access token
-        // Only add it for specific endpoints that require it (like refresh, logout)
-        // @ts-ignore - Ky hook signature compatibility
-        const url = String(request.url);
-        const requiresAuth =
-          url.includes("/refresh") ||
-          url.includes("/logout") ||
-          url.includes("/me") ||
-          url.includes("/change-password") ||
-          url.includes("/update-profile") ||
-          url.includes("/users");
+// Request interceptor - Add token before sending request
+axiosInstance.interceptors.request.use(
+  (config) => {
+    const token = getAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  },
+);
 
-        if (requiresAuth) {
-          const token = getAccessToken();
-          if (token) {
-            // @ts-ignore - Ky hook signature compatibility
-            request.headers.set("Authorization", `Bearer ${token}`);
-          }
-        }
-      },
-    ] as any,
-    afterResponse: [
-      async (_: any, __: any, response: any) => {
-        // Handle auth-specific responses
-        if (response && response.status === 401) {
-          // For auth API, 401 might mean refresh token is invalid
+// Response interceptor - Handle responses and token refresh
+axiosInstance.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  async (error: AxiosError) => {
+    const originalRequest = error.config as AxiosRequestConfig & {
+      _retry?: boolean;
+    };
+
+    // Handle 401 - Token expired or invalid
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      console.log("[Interceptor] 401 detected, attempting token refresh...");
+      originalRequest._retry = true;
+
+      try {
+        const refreshToken = getRefreshToken();
+        console.log("[Interceptor] Refresh token exists:", !!refreshToken);
+
+        if (!refreshToken) {
+          console.log("[Interceptor] No refresh token, logging out");
           logoutOutside();
+          if (typeof window !== "undefined") {
+            window.location.href = "/auth/login";
+          }
+          return Promise.reject(error);
         }
-        return response;
-      },
-    ] as any,
+
+        // Try to refresh token
+        console.log("[Interceptor] Calling refresh endpoint...");
+        const refreshResponse = await axios.post(
+          `${BACKEND_BASE_URL}/api/v1/auth/refresh`,
+          { refreshToken },
+        );
+
+        console.log("[Interceptor] Refresh response:", refreshResponse.data);
+        const { accessToken, refreshToken: newRefreshToken } =
+          refreshResponse.data.data;
+
+        if (!accessToken) {
+          console.error("[Interceptor] No accessToken in refresh response");
+          logoutOutside();
+          if (typeof window !== "undefined") {
+            window.location.href = "/auth/login";
+          }
+          return Promise.reject(
+            new Error("No accessToken in refresh response"),
+          );
+        }
+
+        // Update tokens in store
+        console.log("[Interceptor] Updating tokens in store");
+        setTokensOutside(accessToken, newRefreshToken || refreshToken);
+
+        // Retry original request with new token
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        }
+        console.log("[Interceptor] Retrying original request with new token");
+        return axiosInstance(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed - logout
+        console.error("[Interceptor] Token refresh failed:", refreshError);
+        logoutOutside();
+        if (typeof window !== "undefined") {
+          window.location.href = "/auth/login";
+        }
+        return Promise.reject(refreshError);
+      }
+    }
+
+    // Handle other errors
+    if (error.response?.data) {
+      const errorData = error.response.data as any;
+      error.message = errorData.message || errorData.error || error.message;
+    }
+
+    return Promise.reject(error);
   },
-} as any);
+);
 
-// Backend API instance - for main application endpoints
-export const backendApi = parentApi.extend({
-  hooks: {
-    beforeRequest: [
-      (request: any) => {
-        // Always try to add access token for backend API
-        const token = getAccessToken();
-        if (token) {
-          // @ts-ignore - Ky hook signature compatibility
-          request.headers.set("Authorization", `Bearer ${token}`);
-        }
-      },
-    ] as any,
-    afterResponse: [
-      async (request: any, _: any, response: any) => {
-        // Handle token refresh for backend API
-        if (response && response.status === 401) {
-          const refreshToken = getRefreshToken();
-          if (refreshToken) {
-            try {
-              // Attempt to refresh the token
-              const refreshResponse = await authApi
-                .post("api/v1/auth/refresh", {
-                  json: { refreshToken },
-                })
-                .json<{
-                  success: boolean;
-                  token: string;
-                  refreshToken?: string;
-                }>();
-
-              // Update tokens in store
-              setTokensOutside(
-                refreshResponse.token,
-                refreshResponse.refreshToken,
-              );
-
-              // Retry the original request with new token
-              // @ts-ignore - Ky hook signature compatibility
-              request.headers.set(
-                "Authorization",
-                `Bearer ${refreshResponse.token}`,
-              );
-              return ky(request);
-            } catch (refreshError) {
-              // Refresh failed, logout user
-              logoutOutside();
-              // Redirect to login page
-              if (typeof window !== "undefined") {
-                window.location.href = "/auth/login";
-              }
-              throw refreshError;
-            }
-          } else {
-            // No refresh token available, logout
-            logoutOutside();
-            if (typeof window !== "undefined") {
-              window.location.href = "/auth/login";
-            }
-          }
-        }
-        return response;
-      },
-    ] as any,
-  },
-} as any);
-
-// Utility functions for creating custom API instances
-export const createAuthenticatedApi = (
-  _baseUrl?: string,
-  additionalConfig: Options = {},
-): KyInstance => {
-  return parentApi.extend({
-    ...additionalConfig,
-    hooks: {
-      beforeRequest: [
-        (request: any) => {
-          const token = getAccessToken();
-          if (token) {
-            // @ts-ignore - Ky hook signature compatibility
-            request.headers.set("Authorization", `Bearer ${token}`);
-          }
-        },
-        ...(additionalConfig.hooks?.beforeRequest || []),
-      ] as any,
-      afterResponse: [
-        async (_: any, __: any, response: any) => {
-          if (response && response.status === 401) {
-            logoutOutside();
-            if (typeof window !== "undefined") {
-              window.location.href = "/auth/login";
-            }
-          }
-          return response;
-        },
-        ...(additionalConfig.hooks?.afterResponse || []),
-      ] as any,
-      beforeError: [
-        ...commonConfig.hooks!.beforeError!,
-        ...(additionalConfig.hooks?.beforeError || []),
-      ] as any,
-    },
-  } as any);
-};
-
-// Helper function to create API instances for different microservices
-export const createServiceApi = (_serviceName?: string): KyInstance => {
-  return backendApi;
-};
-
-// Export commonly used API methods with better error handling
+// API utility functions
 export const apiUtils = {
-  // GET request with automatic token handling
-  get: async <T = any>(url: string, options?: Options): Promise<T> => {
-    return backendApi.get(url, options).json<T>();
+  get: async <T = any>(
+    url: string,
+    config?: AxiosRequestConfig,
+  ): Promise<T> => {
+    const response = await axiosInstance.get<{ data: T }>(url, config);
+    return response.data.data;
   },
 
-  // POST request with automatic token handling
   post: async <T = any>(
     url: string,
     data?: any,
-    options?: Options,
+    config?: AxiosRequestConfig,
   ): Promise<T> => {
-    return backendApi.post(url, { json: data, ...options }).json<T>();
+    const response = await axiosInstance.post<{ data: T }>(url, data, config);
+    return response.data.data;
   },
 
-  // PUT request with automatic token handling
   put: async <T = any>(
     url: string,
     data?: any,
-    options?: Options,
+    config?: AxiosRequestConfig,
   ): Promise<T> => {
-    return backendApi.put(url, { json: data, ...options }).json<T>();
+    const response = await axiosInstance.put<{ data: T }>(url, data, config);
+    return response.data.data;
   },
 
-  // DELETE request with automatic token handling
-  del: async <T = any>(url: string, options?: Options): Promise<T> => {
-    return backendApi.delete(url, options).json<T>();
-  },
-
-  // PATCH request with automatic token handling
   patch: async <T = any>(
     url: string,
     data?: any,
-    options?: Options,
+    config?: AxiosRequestConfig,
   ): Promise<T> => {
-    return backendApi.patch(url, { json: data, ...options }).json<T>();
+    const response = await axiosInstance.patch<{ data: T }>(url, data, config);
+    return response.data.data;
+  },
+
+  delete: async <T = any>(
+    url: string,
+    config?: AxiosRequestConfig,
+  ): Promise<T> => {
+    const response = await axiosInstance.delete<{ data: T }>(url, config);
+    return response.data.data;
+  },
+
+  // Alias for delete
+  del: async <T = any>(
+    url: string,
+    config?: AxiosRequestConfig,
+  ): Promise<T> => {
+    return apiUtils.delete<T>(url, config);
   },
 };
 
-// Auth-specific API utilities
+// Auth-specific API utilities (same as general)
 export const authUtils = {
-  // POST request for auth endpoints
+  get: async <T = any>(
+    url: string,
+    config?: AxiosRequestConfig,
+  ): Promise<T> => {
+    return apiUtils.get<T>(url, config);
+  },
+
   post: async <T = any>(
     url: string,
     data?: any,
-    options?: Options,
+    config?: AxiosRequestConfig,
   ): Promise<T> => {
-    return authApi.post(url, { json: data, ...options }).json<T>();
+    return apiUtils.post<T>(url, data, config);
   },
 
   put: async <T = any>(
     url: string,
     data?: any,
-    options?: Options,
+    config?: AxiosRequestConfig,
   ): Promise<T> => {
-    return authApi.put(url, { json: data, ...options }).json<T>();
+    return apiUtils.put<T>(url, data, config);
   },
 
-  // GET request for auth endpoints
-  get: async <T = any>(url: string, options?: Options): Promise<T> => {
-    return authApi.get(url, options).json<T>();
+  patch: async <T = any>(
+    url: string,
+    data?: any,
+    config?: AxiosRequestConfig,
+  ): Promise<T> => {
+    return apiUtils.patch<T>(url, data, config);
+  },
+
+  delete: async <T = any>(
+    url: string,
+    config?: AxiosRequestConfig,
+  ): Promise<T> => {
+    return apiUtils.delete<T>(url, config);
   },
 };
+
+// Export axios instance for custom usage if needed
+export { axiosInstance };
