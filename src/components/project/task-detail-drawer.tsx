@@ -18,6 +18,7 @@ import {
 import { DatePickerInput } from "@mantine/dates";
 
 import { notifications } from "@mantine/notifications";
+import { openConfirmModal } from "@mantine/modals";
 import { useUpdateTask, useDeleteTask } from "@/service/hook/task.hook";
 import { TaskStatus } from "@/types/task";
 import type { Task } from "@/types/task";
@@ -210,26 +211,35 @@ export default function TaskDetailDrawer({
   const handleDelete = async () => {
     if (!task) return;
 
-    try {
-      await deleteTask(task.id);
+    openConfirmModal({
+      title: "Confirm delete task",
+      centered: true,
+      children: `Delete task "${task.title}"? This action cannot be undone.`,
+      labels: { confirm: "Delete", cancel: "Cancel" },
+      confirmProps: { color: "red" },
+      onConfirm: async () => {
+        try {
+          await deleteTask(task.id);
 
-      notifications.show({
-        color: "green",
-        title: "Task deleted",
-        message: "Task has been deleted successfully.",
-      });
+          notifications.show({
+            color: "green",
+            title: "Task deleted",
+            message: "Task has been deleted successfully.",
+          });
 
-      onClose();
-    } catch (error) {
-      notifications.show({
-        color: "red",
-        title: "Failed to delete task",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong while deleting the task.",
-      });
-    }
+          onClose();
+        } catch (error) {
+          notifications.show({
+            color: "red",
+            title: "Failed to delete task",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Something went wrong while deleting the task.",
+          });
+        }
+      },
+    });
   };
 
   if (!task) return null;
@@ -259,6 +269,7 @@ export default function TaskDetailDrawer({
     : "No due date";
 
   const autosaveStatusConfig = getAutosaveStatusConfig(autosaveState);
+  const titleError = !title.trim() ? "Task name is required" : null;
 
   return (
     <Drawer
@@ -355,6 +366,7 @@ export default function TaskDetailDrawer({
               value={title}
               onChange={(e) => setTitle(e.currentTarget.value)}
               required
+              error={titleError}
             />
           </Stack>
         </Paper>
