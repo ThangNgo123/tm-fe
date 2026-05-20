@@ -30,6 +30,7 @@ import {
   IconInfoCircle,
   IconTrash,
 } from "@tabler/icons-react";
+import type { DatesRangeValue } from "@mantine/dates";
 
 const STATUS_OPTIONS = [
   { value: TaskStatus.BACKLOG, label: "Backlog" },
@@ -51,24 +52,34 @@ const AUTOSAVE_DEBOUNCE_MS = 800;
 
 type AutosaveState = "saved" | "saving" | "error";
 
+const normalizeDateValue = (value: Date | string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsedDate = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
 const buildUpdatePayload = ({
   title,
   description,
   status,
   priority,
-  dueDate,
+  dueDateRange,
 }: {
   title: string;
   description: string;
   status: TaskStatus | null;
   priority: string | null;
-  dueDate: Date | null;
+  dueDateRange: DatesRangeValue;
 }) => ({
   title: title.trim(),
   description: description.trim() || undefined,
   status: status || undefined,
   priority: priority ? Number(priority) : undefined,
-  due_date: dueDate ? dueDate.toISOString().split("T")[0] : undefined,
+  due_date_start: normalizeDateValue(dueDateRange[0])?.toISOString(),
+  due_date_end: normalizeDateValue(dueDateRange[1])?.toISOString(),
 });
 
 const getAutosaveSignature = (payload: ReturnType<typeof buildUpdatePayload>) =>
@@ -119,7 +130,10 @@ export default function TaskDetailDrawer({
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<TaskStatus | null>(null);
   const [priority, setPriority] = useState<string | null>(null);
-  const [dueDate, setDueDate] = useState<Date | null>(null);
+  const [dueDateRange, setDueDateRange] = useState<DatesRangeValue>([
+    null,
+    null,
+  ]);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>("saved");
 
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -133,14 +147,20 @@ export default function TaskDetailDrawer({
       setDescription(task.description || "");
       setStatus(task.status);
       setPriority(task.priority ? String(task.priority) : null);
-      setDueDate(task.due_date ? new Date(task.due_date) : null);
+      setDueDateRange([
+        task.due_date_start ? new Date(task.due_date_start) : null,
+        task.due_date_end ? new Date(task.due_date_end) : null,
+      ]);
       lastSavedSignatureRef.current = getAutosaveSignature(
         buildUpdatePayload({
           title: task.title,
           description: task.description || "",
           status: task.status,
           priority: task.priority ? String(task.priority) : null,
-          dueDate: task.due_date ? new Date(task.due_date) : null,
+          dueDateRange: [
+            task.due_date_start ? new Date(task.due_date_start) : null,
+            task.due_date_end ? new Date(task.due_date_end) : null,
+          ],
         }),
       );
       setAutosaveState("saved");
@@ -160,7 +180,7 @@ export default function TaskDetailDrawer({
       description,
       status,
       priority,
-      dueDate,
+      dueDateRange,
     });
     const signature = getAutosaveSignature(payload);
 
@@ -206,7 +226,16 @@ export default function TaskDetailDrawer({
         autosaveTimerRef.current = null;
       }
     };
-  }, [opened, task, title, description, status, priority, dueDate, updateTask]);
+  }, [
+    opened,
+    task,
+    title,
+    description,
+    status,
+    priority,
+    dueDateRange,
+    updateTask,
+  ]);
 
   const handleDelete = async () => {
     if (!task) return;
@@ -260,13 +289,29 @@ export default function TaskDetailDrawer({
         "None"
       : "None";
 
-  const dueDateLabel = dueDate
-    ? dueDate.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "No due date";
+  const startDate = normalizeDateValue(dueDateRange[0]);
+  const endDate = normalizeDateValue(dueDateRange[1]);
+
+  const dueDateLabel =
+    startDate || endDate
+      ? `${
+          startDate
+            ? startDate.toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "Start unset"
+        } - ${
+          endDate
+            ? endDate.toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+            : "End unset"
+        }`
+      : "No due date";
 
   const autosaveStatusConfig = getAutosaveStatusConfig(autosaveState);
   const titleError = !title.trim() ? "Task name is required" : null;
@@ -445,16 +490,11 @@ export default function TaskDetailDrawer({
               </Text>
             </Group>
             <DatePickerInput
-              value={dueDate}
-              onChange={(val) => {
-                if (typeof val === "string") {
-                  setDueDate(val ? new Date(val) : null);
-                } else {
-                  setDueDate(val);
-                }
-              }}
+              type="range"
+              value={dueDateRange}
+              onChange={setDueDateRange}
               clearable
-              placeholder="Pick a date"
+              placeholder="Pick a date range"
             />
           </Stack>
         </Paper>

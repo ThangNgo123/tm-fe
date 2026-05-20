@@ -12,7 +12,8 @@ export interface Task {
   description?: string;
   status: TaskStatus;
   priority?: number;
-  due_date?: string;
+  due_date_start?: string;
+  due_date_end?: string;
   project: {
     id: string;
     name: string;
@@ -30,7 +31,8 @@ export interface CreateTaskRequest {
   description?: string;
   status?: TaskStatus;
   priority?: number;
-  due_date?: string;
+  due_date_start?: string;
+  due_date_end?: string;
   project_id: string;
 }
 
@@ -39,5 +41,6 @@ export interface UpdateTaskRequest {
   description?: string;
   status?: TaskStatus;
   priority?: number;
-  due_date?: string;
+  due_date_start?: string;
+  due_date_end?: string;
 }

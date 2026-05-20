@@ -67,16 +67,35 @@ const PRIORITY_LABELS: Record<number, string> = {
   4: "Urgent",
 };
 
-const formatDueDate = (dueDate?: string) => {
-  if (!dueDate) return "No due date";
+const formatDate = (value?: string) => {
+  if (!value) return null;
 
-  const parsedDate = new Date(dueDate);
-  if (Number.isNaN(parsedDate.getTime())) return "No due date";
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return null;
 
   return parsedDate.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+};
+
+const formatDueDateRange = (task: Task) => {
+  const start = formatDate(task.due_date_start);
+  const end = formatDate(task.due_date_end);
+
+  if (start && end) {
+    return `${start} - ${end}`;
+  }
+
+  if (start) {
+    return `${start} - No end date`;
+  }
+
+  if (end) {
+    return `No start date - ${end}`;
+  }
+
+  return "No due date";
 };
 
 interface KanbanBoardProps {
@@ -265,7 +284,12 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
                         e.currentTarget.style.boxShadow = "none";
                       }}
                     >
-                      <Group justify="space-between" align="flex-start" mb="xs" wrap="nowrap">
+                      <Group
+                        justify="space-between"
+                        align="flex-start"
+                        mb="xs"
+                        wrap="nowrap"
+                      >
                         <Text fw={600} size="sm" truncate style={{ flex: 1 }}>
                           {task.title}
                         </Text>
@@ -318,7 +342,7 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
                             color={theme.colors.gray[6]}
                           />
                           <Text size="xs" c="dimmed">
-                            {formatDueDate(task.due_date)}
+                            {formatDueDateRange(task)}
                           </Text>
                         </Group>
                       </Group>
