@@ -17,7 +17,6 @@ type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
 const BACKEND_BASE_URL =
   import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3000";
-const AUTH_BASE_URL = import.meta.env.VITE_AUTH_API_URL || BACKEND_BASE_URL;
 
 const commonConfig: Options = {
   timeout: 30000,
@@ -38,7 +37,6 @@ const createApi = (prefixUrl: string): KyInstance =>
   } as any);
 
 export const parentApi = ky.create(commonConfig as any);
-export const authApi = createApi(AUTH_BASE_URL);
 export const backendApi = createApi(BACKEND_BASE_URL);
 
 let refreshTokenPromise: Promise<string | null> | null = null;
@@ -53,15 +51,25 @@ const buildHeaders = (headers?: Options["headers"], token?: string) => {
   return requestHeaders;
 };
 
-const parseEnvelopeData = async <T>(response: Response): Promise<T> => {
+const parseResponseData = async <T>(response: Response): Promise<T> => {
   const text = await response.text();
 
   if (!text) {
     return undefined as T;
   }
 
-  const parsed = JSON.parse(text) as ApiEnvelope<T>;
-  return parsed.data;
+  const parsed = JSON.parse(text) as ApiEnvelope<T> | T;
+
+  if (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    "data" in parsed &&
+    typeof (parsed as ApiEnvelope<T>).data !== "undefined"
+  ) {
+    return (parsed as ApiEnvelope<T>).data;
+  }
+
+  return parsed as T;
 };
 
 const isUnauthorizedError = (error: unknown) => {
@@ -78,14 +86,16 @@ const refreshAccessToken = async (): Promise<string | null> => {
   }
 
   if (!refreshTokenPromise) {
-    refreshTokenPromise = authApi
+    refreshTokenPromise = backendApi
       .post("api/v1/auth/refresh", {
         json: { refreshToken },
       } as any)
-      .json<ApiEnvelope<RefreshTokenResponse>>()
+      .json<ApiEnvelope<RefreshTokenResponse> | RefreshTokenResponse>()
       .then((response) => {
-        const accessToken = response?.data?.accessToken;
-        const nextRefreshToken = response?.data?.refreshToken || refreshToken;
+        const responseData =
+          response && "data" in response ? response.data : response;
+        const accessToken = responseData?.accessToken;
+        const nextRefreshToken = responseData?.refreshToken || refreshToken;
 
         if (!accessToken) {
           return null;
@@ -116,7 +126,7 @@ const requestBackend = async <T>(
 
   try {
     const response = await backendApi[method](url, requestOptions);
-    return parseEnvelopeData<T>(response);
+    return parseResponseData<T>(response);
   } catch (error) {
     if (!isUnauthorizedError(error)) {
       throw error;
@@ -138,7 +148,7 @@ const requestBackend = async <T>(
     } as any;
 
     const retryResponse = await backendApi[method](url, retryOptions);
-    return parseEnvelopeData<T>(retryResponse);
+    return parseResponseData<T>(retryResponse);
   }
 };
 
@@ -147,8 +157,8 @@ const requestAuth = async <T>(
   url: string,
   options?: Options,
 ): Promise<T> => {
-  const response = await authApi[method](url, options as any);
-  return parseEnvelopeData<T>(response);
+  const response = await backendApi[method](url, options as any);
+  return parseResponseData<T>(response);
 };
 
 export const apiUtils = {

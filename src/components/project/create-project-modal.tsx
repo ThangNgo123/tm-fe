@@ -1,14 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { notifications } from "@mantine/notifications";
-import {
-  Button,
-  Group,
-  Modal,
-  Stack,
-  TextInput,
-  Textarea,
-} from "@mantine/core";
+import { Button, Group, Modal, Stack, TextInput } from "@mantine/core";
 import { openConfirmModal } from "@mantine/modals";
 import { useCreateProject } from "@/service/hook/project.hook";
 

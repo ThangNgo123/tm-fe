@@ -1,12 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Modal,
-  TextInput,
-  Textarea,
-  Group,
-  Button,
-  Stack,
-} from "@mantine/core";
+import { Modal, TextInput, Group, Button, Stack } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useUpdateProject } from "@/service/hook/project.hook";
 import type { Project } from "@/types/project";

@@ -7,20 +7,17 @@ import {
   Button,
   Stack,
 } from "@mantine/core";
-import { TaskStatus } from "@/types/task";
 
 interface CreateTaskModalProps {
   opened: boolean;
   onClose: () => void;
   onCreateTask: (title: string, description?: string) => Promise<void>;
-  status?: TaskStatus | null;
 }
 
 export default function CreateTaskModal({
   opened,
   onClose,
   onCreateTask,
-  status,
 }: CreateTaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
