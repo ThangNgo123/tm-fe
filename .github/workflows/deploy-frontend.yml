@@ -21,7 +21,10 @@ jobs:
 
       - name: Build image
         run: |
-          docker build -t wincorn/tm-fe:${{ github.sha }} .
+          docker build \
+            --build-arg FRONTEND_GOOGLE_CLIENT_ID=${{ secrets.FRONTEND_GOOGLE_CLIENT_ID }} \
+            --build-arg FRONTEND_BACKEND_API_URL=${{ secrets.FRONTEND_BACKEND_API_URL }} \
+            -t wincorn/tm-fe:${{ github.sha }} .
 
       - name: Push image
         run: |
