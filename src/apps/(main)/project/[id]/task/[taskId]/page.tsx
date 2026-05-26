@@ -278,7 +278,7 @@ export default function TaskDetailPage() {
             message:
               error instanceof Error
                 ? error.message
-                : "Something went wrong while deleting the task.",
+                : "Something went wrong while deleting the task!.",
           });
         }
       },
