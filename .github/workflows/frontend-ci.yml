@@ -1,80 +1,12 @@
-name: Deploy Frontend
+name: Test Action
 
 on:
   push:
-    branches:
-      - dev
-      - main
 
 jobs:
-  docker:
+  test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set environment
-        run: |
-          if [ "${GITHUB_REF_NAME}" = "main" ]; then
-            echo "ENV=prod" >> $GITHUB_ENV
-            echo "VALUES_PATH=apps/tm-app/environments/prod/values.yaml" >> $GITHUB_ENV
-
-            echo "FRONTEND_BACKEND_API_URL=${{ secrets.PROD_FRONTEND_BACKEND_API_URL }}" >> $GITHUB_ENV
-          else
-            echo "ENV=dev" >> $GITHUB_ENV
-            echo "VALUES_PATH=apps/tm-app/environments/dev/values.yaml" >> $GITHUB_ENV
-
-            echo "FRONTEND_BACKEND_API_URL=${{ secrets.DEV_FRONTEND_BACKEND_API_URL }}" >> $GITHUB_ENV
-          fi
-
-      - name: Set image tag
-        run: |
-          echo "IMAGE_TAG=${ENV}-${GITHUB_SHA}" >> $GITHUB_ENV
-
-      - name: Login DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-
-      - name: Build image
-        run: |
-          docker build \
-            --build-arg FRONTEND_GOOGLE_CLIENT_ID=${{ secrets.FRONTEND_GOOGLE_CLIENT_ID }} \
-            --build-arg FRONTEND_BACKEND_API_URL=${FRONTEND_BACKEND_API_URL} \
-            -t wincorn/tm-fe:${IMAGE_TAG} .
-
-      - name: Push image
-        run: |
-          docker push wincorn/tm-fe:${IMAGE_TAG}
-
-      - name: Clone infra repo
-        run: |
-          git clone https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/ThangNgo123/tm-infra.git
-
-      - name: Install yq
-        run: |
-          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
-          sudo chmod +x /usr/bin/yq
-
-      - name: Update frontend image tag
-        run: |
-          cd tm-infra
-
-          yq -i '
-            .fe.image.tag = env(IMAGE_TAG)
-          ' ${VALUES_PATH}
-
-      - name: Commit and push
-        run: |
-          cd tm-infra
-
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-
-          git add .
-
-          git commit -m "update frontend image to ${IMAGE_TAG}" || echo "no changes"
-
-          git push
+      - name: Print message
+        run: echo "GitHub Actions is working"
