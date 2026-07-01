@@ -35,7 +35,7 @@ export default function ProjectPage() {
         title="Project not found"
         color="yellow"
       >
-        The project you are looking for does not exist.
+        The project you are looking for does not exist
       </Alert>
     );
   }
