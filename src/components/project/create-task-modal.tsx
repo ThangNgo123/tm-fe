@@ -58,7 +58,7 @@ export default function CreateTaskModal({
 
         <Textarea
           label="Description"
-          placeholder="Optional description"
+          placeholder="Optional description haha"
           value={description}
           onChange={(event) => setDescription(event.currentTarget.value)}
           minRows={3}
