@@ -35,7 +35,7 @@ export default function EditProjectModal({
       notifications.show({
         color: "red",
         title: "Project name is required",
-        message: "Please enter a name before saving.",
+        message: "Please enter a name before saving. haha 333111",
       });
       return;
     }
