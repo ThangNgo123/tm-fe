@@ -34,7 +34,7 @@ export default function EditProjectModal({
     if (!trimmedName) {
       notifications.show({
         color: "red",
-        title: "Project name is required",
+        title: "Project name is required haha",
         message: "Please enter a name before saving.",
       });
       return;
